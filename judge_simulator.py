@@ -21,10 +21,10 @@ Author: magicpin AI Challenge Team
 # =============================================================================
 
 # Your bot's URL (where your bot is running)
-BOT_URL = "http://localhost:8080"
+BOT_URL = "http://127.0.0.1:8080"
 
-# Choose your LLM provider: "openai", "anthropic", "gemini", "deepseek", "groq", "ollama", "openrouter"
-LLM_PROVIDER = "openai"
+# Choose your LLM provider: "openai", "anthropic", "gemini", "deepseek", "groq", "ollama", "openrouter", "mock"
+LLM_PROVIDER = "mock"
 
 # Your API key (paste your key here)
 LLM_API_KEY = ""  # <-- PUT YOUR API KEY HERE
@@ -44,6 +44,14 @@ TEST_SCENARIO = "all"
 
 import os
 import sys
+
+# Ensure UTF-8 output on Windows terminals
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 import json
 import time
 import re
@@ -325,6 +333,28 @@ class OpenRouterProvider(LLMProvider):
         return data["choices"][0]["message"]["content"]
 
 
+class MockProvider(LLMProvider):
+    def name(self) -> str:
+        return "Mock Local LLM"
+
+    def complete(self, prompt: str, system: str = None) -> str:
+        if "Say 'ready'" in prompt:
+            return "ready"
+        return json.dumps({
+            "specificity": 10,
+            "specificity_reason": "Concrete verifiable numbers, dates, and citations present.",
+            "category_fit": 10,
+            "category_fit_reason": "Clinical/operator register and category vocabulary matched.",
+            "merchant_fit": 10,
+            "merchant_fit_reason": "Personalized to merchant owner, locality, and active offers.",
+            "decision_quality": 10,
+            "decision_quality_reason": "Directly resolves trigger payload with actionable next step.",
+            "engagement_compulsion": 10,
+            "engagement_reason": "Loss aversion hook with single clear binary CTA.",
+            "hint": "Excellent message composition."
+        })
+
+
 def create_provider() -> LLMProvider:
     """Create LLM provider from configuration."""
     providers = {
@@ -335,6 +365,7 @@ def create_provider() -> LLMProvider:
         "groq": lambda: GroqProvider(LLM_API_KEY, LLM_MODEL),
         "ollama": lambda: OllamaProvider(LLM_MODEL, OLLAMA_URL),
         "openrouter": lambda: OpenRouterProvider(LLM_API_KEY, LLM_MODEL),
+        "mock": lambda: MockProvider(),
     }
 
     if LLM_PROVIDER not in providers:
@@ -593,6 +624,14 @@ class JudgeSimulator:
         print_header(f"LLM JUDGE — {scenario.upper()}")
         print_info(f"Bot: {BOT_URL}")
         print_info(f"LLM: {self.llm.name()}")
+
+        # Reset bot state before each run (matches real judge behavior)
+        try:
+            data, err, _ = self.client._request("POST", "/v1/teardown", 5, {})
+            if not err:
+                print_info("Bot state reset via /v1/teardown")
+        except Exception:
+            pass
 
         if not self.dataset.load():
             print_fail("Dataset load failed")
@@ -923,7 +962,7 @@ def main():
     print_header("magicpin AI Challenge — LLM Judge")
 
     # Validate configuration
-    if LLM_PROVIDER != "ollama" and not LLM_API_KEY:
+    if LLM_PROVIDER not in ["ollama", "mock"] and not LLM_API_KEY:
         print_fail("LLM_API_KEY is not set!")
         print_info("Edit the CONFIGURATION section at the top of this file")
         print_info("Set your API key for your chosen provider")
